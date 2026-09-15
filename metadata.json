@@ -1,6 +1,8 @@
 {
-  "name": "360° Panorama Tour & Hotspot Viewer",
-  "description": "An interactive 360-degree virtual tour and panorama viewer inspired by Coohom with custom hotspots, multi-room floor plan radar, and embed integration.",
-  "requestFramePermissions": ["gyroscope", "accelerometer"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "name": "VR360°Panorama",
+  "description": "An interactive panorama viewer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

@@ -57,7 +57,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <header
       id="coohom-topbar"
-      className="absolute top-0 left-0 right-0 z-30 px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between pointer-events-none select-none bg-gradient-to-b from-neutral-950/85 via-neutral-950/40 to-transparent"
+      style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top, 0.625rem))' }}
+      className="absolute top-0 left-0 right-0 z-30 px-2.5 sm:px-4 pb-2.5 sm:pb-3 flex items-center justify-between pointer-events-none select-none bg-gradient-to-b from-neutral-950/85 via-neutral-950/40 to-transparent"
     >
       {/* Left: Project Branding & Title */}
       <div className="flex items-center gap-2 sm:gap-3 pointer-events-auto min-w-0">
@@ -70,7 +71,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <h1 className="text-xs sm:text-sm font-bold text-white tracking-tight drop-shadow truncate max-w-[150px] xs:max-w-[200px] sm:max-w-none">
+            <h1 className="text-xs sm:text-sm font-bold text-white tracking-tight drop-shadow truncate max-w-[110px] xs:max-w-[180px] sm:max-w-none">
               {project.title}
             </h1>
             <span className="hidden sm:inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-500/30">
@@ -86,8 +87,8 @@ export const TopBar: React.FC<TopBarProps> = ({
       </div>
 
       {/* Right: Actions & Tool Toggles */}
-      <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto flex-shrink-0">
-        {/* Mode Switcher: Explore vs Hotspot Studio */}
+      <div className="flex items-center gap-1 sm:gap-2 pointer-events-auto flex-shrink-0">
+        {/* Desktop Mode Switcher: Explore vs Hotspot Studio */}
         <div className="hidden sm:flex items-center p-0.5 rounded-full bg-neutral-900/80 backdrop-blur-md border border-white/10 text-xs">
           <button
             id="mode-explore-btn"
@@ -114,6 +115,21 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
         </div>
 
+        {/* Mobile Studio Toggle Button */}
+        <button
+          id="mobile-mode-studio-btn"
+          onClick={onToggleEditMode}
+          className={`sm:hidden p-1.5 rounded-full backdrop-blur-md border transition-colors ${
+            isEditMode
+              ? 'bg-amber-500 text-neutral-950 border-amber-400 font-bold shadow-lg shadow-amber-500/20'
+              : 'bg-neutral-900/70 text-neutral-300 border-white/10 hover:text-white'
+          }`}
+          title={isEditMode ? 'Exit Hotspot Studio' : 'Edit Hotspots'}
+          aria-label="Hotspot Studio"
+        >
+          <Wand2 className="w-4 h-4" />
+        </button>
+
         {/* Ambient Sound */}
         <AudioPlayer
           isEnabled={bgAudioEnabled}
@@ -126,18 +142,18 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           id="topbar-scenes-btn"
           onClick={onOpenSceneManager}
-          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-900/70 hover:bg-neutral-900 text-neutral-200 hover:text-white text-xs font-semibold backdrop-blur-md border border-white/10 shadow-lg transition-colors"
+          className="flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-3 sm:py-1.5 rounded-full bg-neutral-900/70 hover:bg-neutral-900 text-neutral-200 hover:text-white text-xs font-semibold backdrop-blur-md border border-white/10 shadow-lg transition-colors"
           title="Manage Tour Scenes and Panoramas"
         >
           <Layers className="w-3.5 h-3.5 text-sky-400" />
-          <span>Scenes</span>
+          <span className="hidden sm:inline">Scenes</span>
         </button>
 
         {/* Embed & Share Studio */}
         <button
           id="topbar-embed-btn"
           onClick={onOpenEmbedModal}
-          className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full bg-blue-600/90 hover:bg-blue-600 text-white text-xs font-semibold backdrop-blur-md shadow-lg shadow-blue-900/30 transition-colors cursor-pointer"
+          className="flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-full bg-blue-600/90 hover:bg-blue-600 text-white text-xs font-semibold backdrop-blur-md shadow-lg shadow-blue-900/30 transition-colors cursor-pointer"
           title="Get Embed iFrame Code &amp; Integration Options"
         >
           <Code className="w-3.5 h-3.5" />

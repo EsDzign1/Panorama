@@ -2,22 +2,19 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>VR360°Panorama</title>
-    <script type="text/javascript">
-      // GitHub Pages Single Page App Redirect
-      // Preserves URL paths and query parameters on reload or direct navigation
-      var pathSegmentsToKeep = 1;
-      var l = window.location;
-      l.replace(
-        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
-        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
-        (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
-        l.hash
-      );
+    <title>VR360°Panorama - Redirecting</title>
+    <script>
+      // Clean redirect to repo root preserving room parameters and hash
+      var path = window.location.pathname;
+      var segments = path.split('/').filter(Boolean);
+      // For GitHub Pages project repos: username.github.io/repo-name/
+      // The first segment is the repo name
+      var repoName = segments.length > 0 && window.location.hostname.endsWith('github.io') ? '/' + segments[0] + '/' : '/';
+      var target = window.location.origin + repoName + window.location.search + window.location.hash;
+      window.location.replace(target);
     </script>
   </head>
-  <body>
-    <p>Redirecting to VR360°Panorama...</p>
+  <body style="background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+    <p>Redirecting to 360° Tour...</p>
   </body>
 </html>

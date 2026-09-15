@@ -32,7 +32,7 @@ export const FloorPlanRadar: React.FC<FloorPlanRadarProps> = ({
       <button
         id="floorplan-minimized-btn"
         onClick={() => setIsMinimized(false)}
-        className="absolute bottom-20 sm:bottom-24 left-3 sm:left-4 z-30 px-3 py-2 bg-neutral-950/85 hover:bg-neutral-900 text-white rounded-xl backdrop-blur-md border border-white/15 shadow-xl flex items-center gap-1.5 text-xs font-semibold transition-all duration-200 hover:scale-105 pointer-events-auto"
+        className="absolute top-14 sm:top-auto sm:bottom-24 left-3 sm:left-4 z-30 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-neutral-950/85 hover:bg-neutral-900 text-white rounded-xl backdrop-blur-md border border-white/15 shadow-xl flex items-center gap-1.5 text-xs font-semibold transition-all duration-200 hover:scale-105 pointer-events-auto"
         title="Open Floor Plan Radar"
       >
         <Layers className="w-3.5 h-3.5 text-sky-400" />
@@ -47,10 +47,10 @@ export const FloorPlanRadar: React.FC<FloorPlanRadarProps> = ({
   return (
     <div
       id="floorplan-widget"
-      className={`absolute bottom-20 sm:bottom-24 left-3 sm:left-4 z-30 bg-neutral-950/90 backdrop-blur-md rounded-2xl border border-white/15 shadow-2xl overflow-hidden transition-all duration-300 pointer-events-auto ${
+      className={`absolute top-14 sm:top-auto sm:bottom-24 left-3 sm:left-4 z-30 bg-neutral-950/90 backdrop-blur-md rounded-2xl border border-white/15 shadow-2xl overflow-hidden transition-all duration-300 pointer-events-auto ${
         isExpanded
           ? 'w-[90vw] sm:w-96 h-72 sm:h-80'
-          : 'w-[75vw] max-w-[260px] sm:max-w-none sm:w-64 h-52 sm:h-56'
+          : 'w-[80vw] max-w-[280px] sm:max-w-none sm:w-64 h-52 sm:h-56'
       }`}
     >
       {/* Header */}

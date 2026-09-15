@@ -71,6 +71,8 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
     latVelocity: 0,
     touchStartDist: 0,
     touchStartFov: 70,
+    lastTouchX: 0,
+    lastTouchY: 0,
     hasDraggedSignificantly: false,
     autoRotate: settings.autoRotate,
     autoRotateSpeed: settings.autoRotateSpeed,
@@ -242,12 +244,18 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
 
     // Animation & Render Loop
     let animationFrameId: number;
+    let lastReportedYaw = -999;
+    let lastYawUpdateTime = 0;
+    let frameCount = 0;
 
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
+      frameCount++;
       const state = stateRef.current;
-      const cWidth = containerRef.current?.clientWidth || window.innerWidth;
-      const cHeight = containerRef.current?.clientHeight || window.innerHeight;
+      const rawWidth = containerRef.current?.clientWidth || window.innerWidth;
+      const rawHeight = containerRef.current?.clientHeight || window.innerHeight;
+      const cWidth = Math.max(1, rawWidth);
+      const cHeight = Math.max(1, rawHeight);
 
       // Inertia & Damping when dragging ends
       if (!state.isUserInteracting) {
@@ -271,6 +279,8 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
 
       // Update camera FOV
       camera.fov = state.fov;
+
+      let currentActiveYaw = state.lon;
 
       if (state.isGyroActive && state.hasDeviceData) {
         // Mobile Gyro Sensor Fusion
@@ -296,10 +306,7 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
         const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
         let calcYaw = THREE.MathUtils.radToDeg(Math.atan2(forward.x, -forward.z));
         if (calcYaw < 0) calcYaw += 360;
-
-        if (onYawChange) {
-          onYawChange(calcYaw);
-        }
+        currentActiveYaw = calcYaw;
       } else {
         // Standard Euler LookAt
         const phi = THREE.MathUtils.degToRad(90 - state.lat);
@@ -312,15 +319,23 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
         );
 
         camera.lookAt(target);
+        currentActiveYaw = state.lon;
+      }
 
-        if (onYawChange) {
-          onYawChange(state.lon);
+      // Throttle yaw updates to parent to prevent 60fps React re-renders of the whole app
+      if (onYawChange) {
+        const now = performance.now();
+        const yawDiff = Math.abs(currentActiveYaw - lastReportedYaw);
+        if ((yawDiff > 1.2 && now - lastYawUpdateTime > 80) || now - lastYawUpdateTime > 400) {
+          lastReportedYaw = currentActiveYaw;
+          lastYawUpdateTime = now;
+          onYawChange(currentActiveYaw);
         }
       }
 
       // Render Scene: Stereoscopic VR (Left/Right) or Standard
       if (state.isVrMode) {
-        const halfWidth = Math.floor(cWidth / 2);
+        const halfWidth = Math.max(1, Math.floor(cWidth / 2));
         renderer.setScissorTest(true);
 
         // Left Eye
@@ -343,32 +358,37 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
         renderer.render(scene, camera);
       }
 
-      // Project Hotspots to 2D Screen Space (hidden in VR mode for clean immersion)
+      // Project Hotspots to 2D Screen Space
+      // Update when camera moves or on initial frames
+      const isMoving = state.isUserInteracting || Math.abs(state.lonVelocity) > 0.005 || Math.abs(state.latVelocity) > 0.005 || state.autoRotate || (state.isGyroActive && state.hasDeviceData);
+      
       if (!state.isVrMode && settings.showHotspots && currentRoom.hotspots.length > 0 && containerRef.current) {
-        const projected: ProjectedHotspot[] = currentRoom.hotspots.map((hotspot) => {
-          const hPhi = THREE.MathUtils.degToRad(90 - hotspot.pitch);
-          const hTheta = THREE.MathUtils.degToRad(hotspot.yaw);
+        if (isMoving || frameCount < 15) {
+          const projected: ProjectedHotspot[] = currentRoom.hotspots.map((hotspot) => {
+            const hPhi = THREE.MathUtils.degToRad(90 - hotspot.pitch);
+            const hTheta = THREE.MathUtils.degToRad(hotspot.yaw);
 
-          const hPos = new THREE.Vector3(
-            500 * Math.sin(hPhi) * Math.cos(hTheta),
-            500 * Math.cos(hPhi),
-            500 * Math.sin(hPhi) * Math.sin(hTheta)
-          );
+            const hPos = new THREE.Vector3(
+              500 * Math.sin(hPhi) * Math.cos(hTheta),
+              500 * Math.cos(hPhi),
+              500 * Math.sin(hPhi) * Math.sin(hTheta)
+            );
 
-          hPos.project(camera);
-          const isVisible = hPos.z < 1;
-          const screenX = ((hPos.x + 1) * cWidth) / 2;
-          const screenY = ((-hPos.y + 1) * cHeight) / 2;
+            hPos.project(camera);
+            const isVisible = hPos.z < 1;
+            const screenX = ((hPos.x + 1) * cWidth) / 2;
+            const screenY = ((-hPos.y + 1) * cHeight) / 2;
 
-          return {
-            hotspot,
-            screenX,
-            screenY,
-            isVisible,
-          };
-        });
+            return {
+              hotspot,
+              screenX,
+              screenY,
+              isVisible,
+            };
+          });
 
-        setProjectedHotspots(projected);
+          setProjectedHotspots(projected);
+        }
       } else if (projectedHotspots.length > 0) {
         setProjectedHotspots([]);
       }
@@ -405,8 +425,11 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
         stateRef.current.isUserInteracting = true;
-        stateRef.current.onMouseDownMouseX = e.touches[0].clientX;
-        stateRef.current.onMouseDownMouseY = e.touches[0].clientY;
+        const t = e.touches[0];
+        stateRef.current.lastTouchX = t.clientX;
+        stateRef.current.lastTouchY = t.clientY;
+        stateRef.current.onMouseDownMouseX = t.clientX;
+        stateRef.current.onMouseDownMouseY = t.clientY;
         stateRef.current.onMouseDownLon = stateRef.current.lon;
         stateRef.current.onMouseDownLat = stateRef.current.lat;
         stateRef.current.lonVelocity = 0;
@@ -414,6 +437,8 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
         stateRef.current.hasDraggedSignificantly = false;
       } else if (e.touches.length === 2) {
         stateRef.current.isUserInteracting = false;
+        stateRef.current.lonVelocity = 0;
+        stateRef.current.latVelocity = 0;
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         stateRef.current.touchStartDist = Math.hypot(dx, dy);
@@ -422,26 +447,40 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 1 && stateRef.current.isUserInteracting) {
-        const dx = e.touches[0].clientX - stateRef.current.onMouseDownMouseX;
-        const dy = e.touches[0].clientY - stateRef.current.onMouseDownMouseY;
+      // Prevent mobile browser page bounce & pull-to-refresh
+      if (e.cancelable) {
+        e.preventDefault();
+      }
 
-        if (Math.hypot(dx, dy) > 5) {
+      if (e.touches.length === 1 && stateRef.current.isUserInteracting) {
+        const curX = e.touches[0].clientX;
+        const curY = e.touches[0].clientY;
+        const prevX = stateRef.current.lastTouchX || curX;
+        const prevY = stateRef.current.lastTouchY || curY;
+        const deltaX = curX - prevX;
+        const deltaY = curY - prevY;
+
+        stateRef.current.lastTouchX = curX;
+        stateRef.current.lastTouchY = curY;
+
+        const totalDx = curX - stateRef.current.onMouseDownMouseX;
+        const totalDy = curY - stateRef.current.onMouseDownMouseY;
+        if (Math.hypot(totalDx, totalDy) > 6) {
           stateRef.current.hasDraggedSignificantly = true;
         }
 
-        const factor = (stateRef.current.fov / 70) * 0.2;
-        stateRef.current.lon = (stateRef.current.onMouseDownLon - dx * factor) % 360;
-        stateRef.current.lat = Math.max(-85, Math.min(85, stateRef.current.onMouseDownLat + dy * factor));
-        stateRef.current.lonVelocity = -(dx * factor * 0.05);
-        stateRef.current.latVelocity = dy * factor * 0.05;
+        const factor = (stateRef.current.fov / 70) * 0.18;
+        stateRef.current.lon = (stateRef.current.lon - deltaX * factor) % 360;
+        stateRef.current.lat = Math.max(-85, Math.min(85, stateRef.current.lat + deltaY * factor));
+        stateRef.current.lonVelocity = -deltaX * factor * 0.45;
+        stateRef.current.latVelocity = deltaY * factor * 0.45;
       } else if (e.touches.length === 2 && stateRef.current.touchStartDist > 0) {
         // Pinch zoom
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const currentDist = Math.hypot(dx, dy);
         const distDelta = stateRef.current.touchStartDist - currentDist;
-        const fovDelta = distDelta * 0.18;
+        const fovDelta = distDelta * 0.16;
         const newFov = Math.max(
           settings.fovMin,
           Math.min(settings.fovMax, stateRef.current.touchStartFov + fovDelta)
@@ -457,15 +496,18 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
         stateRef.current.touchStartDist = 0;
       } else if (e.touches.length === 1) {
         stateRef.current.isUserInteracting = true;
-        stateRef.current.onMouseDownMouseX = e.touches[0].clientX;
-        stateRef.current.onMouseDownMouseY = e.touches[0].clientY;
+        const t = e.touches[0];
+        stateRef.current.lastTouchX = t.clientX;
+        stateRef.current.lastTouchY = t.clientY;
+        stateRef.current.onMouseDownMouseX = t.clientX;
+        stateRef.current.onMouseDownMouseY = t.clientY;
         stateRef.current.onMouseDownLon = stateRef.current.lon;
         stateRef.current.onMouseDownLat = stateRef.current.lat;
       }
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd, { passive: true });
     el.addEventListener('touchcancel', onTouchEnd, { passive: true });
 

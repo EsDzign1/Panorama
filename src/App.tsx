@@ -67,6 +67,37 @@ export default function App() {
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isVrMode, setIsVrMode] = useState<boolean>(false);
+  const [isGyroActive, setIsGyroActive] = useState<boolean>(false);
+
+  // Mobile Gyroscope / Motion Sensor Toggle
+  const handleToggleGyro = async () => {
+    if (typeof (DeviceOrientationEvent as any)?.requestPermission === 'function') {
+      try {
+        const res = await (DeviceOrientationEvent as any).requestPermission();
+        if (res === 'granted') {
+          setIsGyroActive((prev) => !prev);
+        } else {
+          alert('Motion sensor permission was not granted.');
+        }
+      } catch (e) {
+        console.warn('Gyro permission request error:', e);
+        setIsGyroActive((prev) => !prev);
+      }
+    } else {
+      setIsGyroActive((prev) => !prev);
+    }
+  };
+
+  // VR Mode Toggle (Automatically activates gyro for headset view)
+  const handleToggleVr = () => {
+    setIsVrMode((prev) => {
+      const next = !prev;
+      if (next) {
+        setIsGyroActive(true);
+      }
+      return next;
+    });
+  };
 
   // Modals
   const [activeDetailHotspot, setActiveDetailHotspot] = useState<Hotspot | null>(null);
@@ -234,10 +265,10 @@ export default function App() {
   return (
     <main
       id="coohom-panorama-app"
-      className="relative w-screen h-screen overflow-hidden bg-neutral-950 font-sans"
+      className="fixed inset-0 w-full h-full h-[100dvh] overflow-hidden bg-neutral-950 font-sans select-none"
     >
       {/* 1. Header / Top Navigation */}
-      {controlsLevel !== 'clean' && (
+      {controlsLevel !== 'clean' && !isVrMode && (
         <TopBar
           project={project}
           isEditMode={isEditMode}
@@ -276,11 +307,13 @@ export default function App() {
           }}
           onYawChange={setCurrentYaw}
           isVrMode={isVrMode}
+          isGyroActive={isGyroActive}
+          onToggleVr={handleToggleVr}
         />
       )}
 
       {/* 3. Interactive Floor Plan Radar */}
-      {settings.showFloorPlan && controlsLevel !== 'clean' && (
+      {!isVrMode && settings.showFloorPlan && controlsLevel !== 'clean' && (
         <FloorPlanRadar
           rooms={project.rooms}
           currentRoomId={currentRoomId}
@@ -291,7 +324,7 @@ export default function App() {
       )}
 
       {/* 4. Bottom Room Switcher Carousel & Toolbar */}
-      {controlsLevel !== 'clean' && (
+      {!isVrMode && controlsLevel !== 'clean' && (
         <RoomCarousel
           rooms={project.rooms}
           currentRoomId={currentRoomId}
@@ -304,7 +337,9 @@ export default function App() {
             setSettings((prev) => ({ ...prev, showHotspots: !prev.showHotspots }))
           }
           onToggleFullscreen={handleToggleFullscreen}
-          onToggleVr={() => setIsVrMode(!isVrMode)}
+          onToggleVr={handleToggleVr}
+          onToggleGyro={handleToggleGyro}
+          isGyroActive={isGyroActive}
           onZoomIn={() =>
             setSettings((prev) => ({
               ...prev,

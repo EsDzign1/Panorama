@@ -46,6 +46,7 @@ export const initialTourProject: TourProject = {
     showRoomBar: true,
     bgAudioEnabled: false,
     bgAudioVolume: 0.35,
+    enableGyro: false,
     fovMin: 35,
     fovMax: 95,
     defaultFov: 70,

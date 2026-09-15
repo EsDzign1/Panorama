@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Hotspot, RoomScene, TourSettings } from '../types';
 import { HotspotMarker } from './HotspotMarker';
 import { getProceduralPano } from '../data/defaultTour';
+import { Compass, Glasses, X } from 'lucide-react';
 
 interface ProjectedHotspot {
   hotspot: Hotspot;
@@ -21,6 +22,8 @@ interface PanoramaViewerProps {
   onPlaceHotspot?: (coords: { yaw: number; pitch: number }) => void;
   onYawChange?: (yaw: number) => void;
   isVrMode?: boolean;
+  isGyroActive?: boolean;
+  onToggleVr?: () => void;
 }
 
 export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
@@ -33,6 +36,8 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
   onPlaceHotspot,
   onYawChange,
   isVrMode = false,
+  isGyroActive = false,
+  onToggleVr,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -45,13 +50,14 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
   const textureCacheRef = useRef<Map<string, THREE.Texture>>(new Map());
 
   // Navigation State
-  const [lon, setLon] = useState<number>(currentRoom.initialYaw || 0);
-  const [lat, setLat] = useState<number>(currentRoom.initialPitch || 0);
-  const [fov, setFov] = useState<number>(currentRoom.fov || settings.defaultFov || 70);
+  const [, setLon] = useState<number>(currentRoom.initialYaw || 0);
+  const [, setLat] = useState<number>(currentRoom.initialPitch || 0);
+  const [, setFov] = useState<number>(currentRoom.fov || settings.defaultFov || 70);
   const [isLoadingTexture, setIsLoadingTexture] = useState<boolean>(true);
   const [projectedHotspots, setProjectedHotspots] = useState<ProjectedHotspot[]>([]);
+  const [hasGyroSupport, setHasGyroSupport] = useState<boolean>(false);
 
-  // Interaction refs (avoid re-render triggers in animation loop)
+  // Interaction refs (avoid re-render triggers in 60fps animation loop)
   const stateRef = useRef({
     lon: currentRoom.initialYaw || 0,
     lat: currentRoom.initialPitch || 0,
@@ -64,20 +70,28 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
     lonVelocity: 0,
     latVelocity: 0,
     touchStartDist: 0,
+    touchStartFov: 70,
     hasDraggedSignificantly: false,
     autoRotate: settings.autoRotate,
     autoRotateSpeed: settings.autoRotateSpeed,
-    gyroActive: settings.enableGyro,
+    // Device orientation sensor states
+    isGyroActive: isGyroActive || isVrMode,
     deviceAlpha: 0,
     deviceBeta: 0,
     deviceGamma: 0,
+    deviceOrient: 0,
+    hasDeviceData: false,
+    gyroYawOffset: 0,
+    isVrMode: isVrMode,
   });
 
-  // Sync settings into stateRef
+  // Sync settings & props into stateRef
   useEffect(() => {
     stateRef.current.autoRotate = settings.autoRotate;
     stateRef.current.autoRotateSpeed = settings.autoRotateSpeed;
-  }, [settings.autoRotate, settings.autoRotateSpeed]);
+    stateRef.current.isGyroActive = isGyroActive || isVrMode;
+    stateRef.current.isVrMode = isVrMode;
+  }, [settings.autoRotate, settings.autoRotateSpeed, isGyroActive, isVrMode]);
 
   // Keep Lon/Lat/Fov in sync when currentRoom changes
   useEffect(() => {
@@ -86,6 +100,7 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
     stateRef.current.fov = currentRoom.fov || settings.defaultFov || 70;
     stateRef.current.lonVelocity = 0;
     stateRef.current.latVelocity = 0;
+    stateRef.current.gyroYawOffset = 0;
     setLon(currentRoom.initialYaw || 0);
     setLat(currentRoom.initialPitch || 0);
     setFov(currentRoom.fov || settings.defaultFov || 70);
@@ -127,7 +142,7 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
       },
       undefined,
       () => {
-        // Fallback to high-definition procedural texture
+        // Fallback to procedural high-definition texture
         const mappedTheme: 'living' | 'kitchen' | 'bedroom' | 'terrace' =
           category === 'kitchen' ? 'kitchen' :
           category === 'bedroom' ? 'bedroom' :
@@ -145,6 +160,33 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
     loadTexture(currentRoom.panoramaUrl, currentRoom.category);
   }, [currentRoom.panoramaUrl, currentRoom.category, loadTexture]);
 
+  // Device Orientation Listener (Mobile Gyroscope)
+  useEffect(() => {
+    const handleDeviceOrientation = (e: DeviceOrientationEvent) => {
+      if (e.alpha !== null && e.beta !== null && e.gamma !== null) {
+        setHasGyroSupport(true);
+        stateRef.current.deviceAlpha = e.alpha;
+        stateRef.current.deviceBeta = e.beta;
+        stateRef.current.deviceGamma = e.gamma;
+        stateRef.current.hasDeviceData = true;
+      }
+    };
+
+    const handleScreenOrientation = () => {
+      const orient = window.orientation ? Number(window.orientation) : (window.screen.orientation ? window.screen.orientation.angle : 0);
+      stateRef.current.deviceOrient = orient;
+    };
+
+    window.addEventListener('deviceorientation', handleDeviceOrientation, { passive: true });
+    window.addEventListener('orientationchange', handleScreenOrientation);
+    handleScreenOrientation();
+
+    return () => {
+      window.removeEventListener('deviceorientation', handleDeviceOrientation);
+      window.removeEventListener('orientationchange', handleScreenOrientation);
+    };
+  }, []);
+
   // Initialize Three.js
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
@@ -159,14 +201,21 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
     const camera = new THREE.PerspectiveCamera(stateRef.current.fov, width / height, 0.1, 1000);
     cameraRef.current = camera;
 
-    // WebGL Renderer
-    const renderer = new THREE.WebGLRenderer({
-      canvas: canvasRef.current,
-      antialias: true,
-      powerPreference: 'high-performance',
-      alpha: false,
-    });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // WebGL Renderer with graceful context handling
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas: canvasRef.current,
+        antialias: true,
+        powerPreference: 'high-performance',
+        alpha: false,
+      });
+    } catch (e) {
+      console.error('WebGL initialization failed:', e);
+      return;
+    }
+
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height);
     rendererRef.current = renderer;
 
@@ -184,20 +233,25 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
     // Initial texture load
     loadTexture(currentRoom.panoramaUrl, currentRoom.category);
 
+    // Three.js Orientation Helpers for Gyro
+    const deviceEuler = new THREE.Euler();
+    const deviceQuat = new THREE.Quaternion();
+    const zee = new THREE.Vector3(0, 0, 1);
+    const q0 = new THREE.Quaternion();
+    const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // - PI/2 on X
+
     // Animation & Render Loop
     let animationFrameId: number;
-    let lastTime = performance.now();
 
-    const animate = (currentTime: number) => {
+    const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
-      const delta = (currentTime - lastTime) / 1000;
-      lastTime = currentTime;
-
       const state = stateRef.current;
+      const cWidth = containerRef.current?.clientWidth || window.innerWidth;
+      const cHeight = containerRef.current?.clientHeight || window.innerHeight;
 
-      // Handle Inertia & Damping
+      // Inertia & Damping when dragging ends
       if (!state.isUserInteracting) {
-        if (state.autoRotate) {
+        if (state.autoRotate && !state.isGyroActive) {
           state.lon += state.autoRotateSpeed;
         }
 
@@ -213,36 +267,84 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
 
       // Constrain Pitch/Lat
       state.lat = Math.max(-85, Math.min(85, state.lat));
-      // Normalize Lon [0, 360)
       state.lon = (state.lon % 360 + 360) % 360;
 
-      // Notify parent for radar/compass updates (debounced by value change)
-      if (onYawChange) {
-        onYawChange(state.lon);
+      // Update camera FOV
+      camera.fov = state.fov;
+
+      if (state.isGyroActive && state.hasDeviceData) {
+        // Mobile Gyro Sensor Fusion
+        const alpha = THREE.MathUtils.degToRad(state.deviceAlpha);
+        const beta = THREE.MathUtils.degToRad(state.deviceBeta);
+        const gamma = THREE.MathUtils.degToRad(state.deviceGamma);
+        const orient = THREE.MathUtils.degToRad(state.deviceOrient);
+
+        deviceEuler.set(beta, alpha, -gamma, 'YXZ');
+        deviceQuat.setFromEuler(deviceEuler);
+        deviceQuat.multiply(q1);
+        deviceQuat.multiply(q0.setFromAxisAngle(zee, -orient));
+
+        // Apply device quaternion to camera
+        camera.quaternion.copy(deviceQuat);
+
+        // Allow manual touch drag yaw offset
+        if (state.lon !== 0) {
+          camera.rotateY(THREE.MathUtils.degToRad(state.lon));
+        }
+
+        // Extract forward vector to keep radar & compass synced
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        let calcYaw = THREE.MathUtils.radToDeg(Math.atan2(forward.x, -forward.z));
+        if (calcYaw < 0) calcYaw += 360;
+
+        if (onYawChange) {
+          onYawChange(calcYaw);
+        }
+      } else {
+        // Standard Euler LookAt
+        const phi = THREE.MathUtils.degToRad(90 - state.lat);
+        const theta = THREE.MathUtils.degToRad(state.lon);
+
+        const target = new THREE.Vector3(
+          500 * Math.sin(phi) * Math.cos(theta),
+          500 * Math.cos(phi),
+          500 * Math.sin(phi) * Math.sin(theta)
+        );
+
+        camera.lookAt(target);
+
+        if (onYawChange) {
+          onYawChange(state.lon);
+        }
       }
 
-      // Update Camera LookAt
-      const phi = THREE.MathUtils.degToRad(90 - state.lat);
-      const theta = THREE.MathUtils.degToRad(state.lon);
+      // Render Scene: Stereoscopic VR (Left/Right) or Standard
+      if (state.isVrMode) {
+        const halfWidth = Math.floor(cWidth / 2);
+        renderer.setScissorTest(true);
 
-      const target = new THREE.Vector3(
-        500 * Math.sin(phi) * Math.cos(theta),
-        500 * Math.cos(phi),
-        500 * Math.sin(phi) * Math.sin(theta)
-      );
+        // Left Eye
+        renderer.setViewport(0, 0, halfWidth, cHeight);
+        renderer.setScissor(0, 0, halfWidth, cHeight);
+        camera.aspect = halfWidth / cHeight;
+        camera.updateProjectionMatrix();
+        renderer.render(scene, camera);
 
-      camera.fov = state.fov;
-      camera.updateProjectionMatrix();
-      camera.lookAt(target);
+        // Right Eye
+        renderer.setViewport(halfWidth, 0, halfWidth, cHeight);
+        renderer.setScissor(halfWidth, 0, halfWidth, cHeight);
+        renderer.render(scene, camera);
 
-      // Render Scene
-      renderer.render(scene, camera);
+        renderer.setScissorTest(false);
+      } else {
+        renderer.setViewport(0, 0, cWidth, cHeight);
+        camera.aspect = cWidth / cHeight;
+        camera.updateProjectionMatrix();
+        renderer.render(scene, camera);
+      }
 
-      // Project Hotspots to 2D Screen Space
-      if (settings.showHotspots && currentRoom.hotspots.length > 0 && containerRef.current) {
-        const cWidth = containerRef.current.clientWidth;
-        const cHeight = containerRef.current.clientHeight;
-
+      // Project Hotspots to 2D Screen Space (hidden in VR mode for clean immersion)
+      if (!state.isVrMode && settings.showHotspots && currentRoom.hotspots.length > 0 && containerRef.current) {
         const projected: ProjectedHotspot[] = currentRoom.hotspots.map((hotspot) => {
           const hPhi = THREE.MathUtils.degToRad(90 - hotspot.pitch);
           const hTheta = THREE.MathUtils.degToRad(hotspot.yaw);
@@ -253,13 +355,8 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
             500 * Math.sin(hPhi) * Math.sin(hTheta)
           );
 
-          // Project to NDC [-1, 1]
           hPos.project(camera);
-
-          // Check if point is in front of camera
           const isVisible = hPos.z < 1;
-
-          // Convert NDC to screen coords
           const screenX = ((hPos.x + 1) * cWidth) / 2;
           const screenY = ((-hPos.y + 1) * cHeight) / 2;
 
@@ -272,20 +369,18 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
         });
 
         setProjectedHotspots(projected);
-      } else if (!settings.showHotspots && projectedHotspots.length > 0) {
+      } else if (projectedHotspots.length > 0) {
         setProjectedHotspots([]);
       }
     };
 
     animationFrameId = requestAnimationFrame(animate);
 
-    // Resize Observer for responsive viewport
+    // Responsive Viewport Resize Observer
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width: newWidth, height: newHeight } = entry.contentRect;
         if (newWidth > 0 && newHeight > 0 && cameraRef.current && rendererRef.current) {
-          cameraRef.current.aspect = newWidth / newHeight;
-          cameraRef.current.updateProjectionMatrix();
           rendererRef.current.setSize(newWidth, newHeight);
         }
       }
@@ -302,8 +397,89 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
     };
   }, [loadTexture, settings.showHotspots, currentRoom.hotspots, currentRoom.category, currentRoom.panoramaUrl, onYawChange]);
 
-  // Pointer Event Handlers (Mouse & Touch)
+  // Touch and Multi-Touch Handlers (Pinch to Zoom + Drag Pan)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        stateRef.current.isUserInteracting = true;
+        stateRef.current.onMouseDownMouseX = e.touches[0].clientX;
+        stateRef.current.onMouseDownMouseY = e.touches[0].clientY;
+        stateRef.current.onMouseDownLon = stateRef.current.lon;
+        stateRef.current.onMouseDownLat = stateRef.current.lat;
+        stateRef.current.lonVelocity = 0;
+        stateRef.current.latVelocity = 0;
+        stateRef.current.hasDraggedSignificantly = false;
+      } else if (e.touches.length === 2) {
+        stateRef.current.isUserInteracting = false;
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        stateRef.current.touchStartDist = Math.hypot(dx, dy);
+        stateRef.current.touchStartFov = stateRef.current.fov;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1 && stateRef.current.isUserInteracting) {
+        const dx = e.touches[0].clientX - stateRef.current.onMouseDownMouseX;
+        const dy = e.touches[0].clientY - stateRef.current.onMouseDownMouseY;
+
+        if (Math.hypot(dx, dy) > 5) {
+          stateRef.current.hasDraggedSignificantly = true;
+        }
+
+        const factor = (stateRef.current.fov / 70) * 0.2;
+        stateRef.current.lon = (stateRef.current.onMouseDownLon - dx * factor) % 360;
+        stateRef.current.lat = Math.max(-85, Math.min(85, stateRef.current.onMouseDownLat + dy * factor));
+        stateRef.current.lonVelocity = -(dx * factor * 0.05);
+        stateRef.current.latVelocity = dy * factor * 0.05;
+      } else if (e.touches.length === 2 && stateRef.current.touchStartDist > 0) {
+        // Pinch zoom
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const currentDist = Math.hypot(dx, dy);
+        const distDelta = stateRef.current.touchStartDist - currentDist;
+        const fovDelta = distDelta * 0.18;
+        const newFov = Math.max(
+          settings.fovMin,
+          Math.min(settings.fovMax, stateRef.current.touchStartFov + fovDelta)
+        );
+        stateRef.current.fov = newFov;
+        setFov(newFov);
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        stateRef.current.isUserInteracting = false;
+        stateRef.current.touchStartDist = 0;
+      } else if (e.touches.length === 1) {
+        stateRef.current.isUserInteracting = true;
+        stateRef.current.onMouseDownMouseX = e.touches[0].clientX;
+        stateRef.current.onMouseDownMouseY = e.touches[0].clientY;
+        stateRef.current.onMouseDownLon = stateRef.current.lon;
+        stateRef.current.onMouseDownLat = stateRef.current.lat;
+      }
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [settings.fovMin, settings.fovMax]);
+
+  // Pointer Event Handlers for Mouse (Desktop)
   const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return; // Handled by native touch listeners
     stateRef.current.isUserInteracting = true;
     stateRef.current.onMouseDownMouseX = e.clientX;
     stateRef.current.onMouseDownMouseY = e.clientY;
@@ -315,6 +491,7 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return;
     if (!stateRef.current.isUserInteracting) return;
 
     const dx = e.clientX - stateRef.current.onMouseDownMouseX;
@@ -324,7 +501,6 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
       stateRef.current.hasDraggedSignificantly = true;
     }
 
-    // Sensitivity scales with FOV zoom factor
     const factor = (stateRef.current.fov / 70) * 0.18;
     const newLon = (stateRef.current.onMouseDownLon - dx * factor) % 360;
     const newLat = Math.max(-85, Math.min(85, stateRef.current.onMouseDownLat + dy * factor));
@@ -336,13 +512,13 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
     stateRef.current.lat = newLat;
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (e.pointerType === 'touch') return;
     stateRef.current.isUserInteracting = false;
   };
 
   // Canvas Click (for Edit Mode Hotspot Placement)
   const handleCanvasClick = (e: React.MouseEvent) => {
-    // If user dragged to look around, don't place hotspot
     if (stateRef.current.hasDraggedSignificantly) return;
 
     if (isEditMode && onPlaceHotspot && canvasRef.current && cameraRef.current && sphereMeshRef.current) {
@@ -358,7 +534,6 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
 
       if (intersects.length > 0) {
         const p = intersects[0].point.clone().normalize();
-        // Convert normalized sphere point to Yaw and Pitch
         const pitch = THREE.MathUtils.radToDeg(Math.asin(Math.max(-1, Math.min(1, p.y))));
         let yaw = THREE.MathUtils.radToDeg(Math.atan2(p.z, p.x));
         if (yaw < 0) yaw += 360;
@@ -384,7 +559,7 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
     <div
       ref={containerRef}
       id="panorama-viewport"
-      className="relative w-full h-full overflow-hidden bg-neutral-950 select-none cursor-grab active:cursor-grabbing"
+      className="relative w-full h-full overflow-hidden bg-neutral-950 select-none cursor-grab active:cursor-grabbing touch-none"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -396,8 +571,45 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
       <canvas
         ref={canvasRef}
         id="panorama-canvas"
-        className={`w-full h-full block ${isVrMode ? 'filter contrast-105' : ''}`}
+        className="w-full h-full block"
       />
+
+      {/* Stereoscopic VR Mode UI Overlay */}
+      {isVrMode && (
+        <>
+          {/* Center Divider */}
+          <div className="absolute top-0 bottom-0 left-1/2 w-0.5 -translate-x-1/2 bg-white/20 z-40 pointer-events-none" />
+
+          {/* Left Eye Reticle */}
+          <div className="absolute top-1/2 left-1/4 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-30">
+            <div className="w-3 h-3 rounded-full border border-white/60 bg-white/20" />
+          </div>
+
+          {/* Right Eye Reticle */}
+          <div className="absolute top-1/2 left-3/4 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-30">
+            <div className="w-3 h-3 rounded-full border border-white/60 bg-white/20" />
+          </div>
+
+          {/* Exit VR Button */}
+          {onToggleVr && (
+            <button
+              onClick={onToggleVr}
+              className="absolute top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-neutral-950/90 text-white border border-white/25 rounded-full text-xs font-bold shadow-2xl flex items-center gap-2 hover:bg-neutral-900 cursor-pointer pointer-events-auto"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Exit VR View</span>
+            </button>
+          )}
+        </>
+      )}
+
+      {/* Gyro Sensor Active Notification */}
+      {isGyroActive && !isVrMode && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full text-[11px] font-semibold backdrop-blur shadow-lg flex items-center gap-1.5 pointer-events-none">
+          <Compass className="w-3.5 h-3.5 text-emerald-400 animate-spin-slow" />
+          <span>Motion Look Active: Move or tilt device to look around</span>
+        </div>
+      )}
 
       {/* Loading Overlay */}
       {isLoadingTexture && (
@@ -410,7 +622,8 @@ export const PanoramaViewer: React.FC<PanoramaViewerProps> = ({
 
       {/* Hotspots Layer */}
       <div className="absolute inset-0 pointer-events-none z-20">
-        {settings.showHotspots &&
+        {!isVrMode &&
+          settings.showHotspots &&
           projectedHotspots.map(({ hotspot, screenX, screenY, isVisible }) => {
             const targetRoom = hotspot.targetRoomId
               ? allRooms.find((r) => r.id === hotspot.targetRoomId)

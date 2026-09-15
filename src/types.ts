@@ -58,6 +58,7 @@ export interface TourSettings {
   showRoomBar: boolean;
   bgAudioEnabled: boolean;
   bgAudioVolume: number;
+  enableGyro: boolean;
   fovMin: number;
   fovMax: number;
   defaultFov: number;

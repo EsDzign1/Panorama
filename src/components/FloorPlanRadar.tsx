@@ -18,7 +18,9 @@ export const FloorPlanRadar: React.FC<FloorPlanRadarProps> = ({
   onSelectRoom,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(() => {
+    return typeof window !== 'undefined' ? window.innerWidth < 640 : false;
+  });
 
   const activeRoom = rooms.find((r) => r.id === currentRoomId) || rooms[0];
 
@@ -30,11 +32,14 @@ export const FloorPlanRadar: React.FC<FloorPlanRadarProps> = ({
       <button
         id="floorplan-minimized-btn"
         onClick={() => setIsMinimized(false)}
-        className="absolute bottom-24 left-4 z-30 p-2.5 bg-neutral-900/80 hover:bg-neutral-900 text-white rounded-xl backdrop-blur-md border border-white/15 shadow-xl flex items-center gap-2 text-xs font-semibold transition-all duration-200 hover:scale-105"
+        className="absolute bottom-20 sm:bottom-24 left-3 sm:left-4 z-30 px-3 py-2 bg-neutral-950/85 hover:bg-neutral-900 text-white rounded-xl backdrop-blur-md border border-white/15 shadow-xl flex items-center gap-1.5 text-xs font-semibold transition-all duration-200 hover:scale-105 pointer-events-auto"
         title="Open Floor Plan Radar"
       >
-        <Layers className="w-4 h-4 text-sky-400" />
-        <span>Floor Plan</span>
+        <Layers className="w-3.5 h-3.5 text-sky-400" />
+        <span className="text-[11px] sm:text-xs">Floor Plan</span>
+        <span className="text-[10px] text-neutral-400 font-mono hidden sm:inline">
+          {Math.round(radarRotation)}°
+        </span>
       </button>
     );
   }
@@ -42,8 +47,10 @@ export const FloorPlanRadar: React.FC<FloorPlanRadarProps> = ({
   return (
     <div
       id="floorplan-widget"
-      className={`absolute bottom-24 left-4 z-30 bg-neutral-950/85 backdrop-blur-md rounded-2xl border border-white/15 shadow-2xl overflow-hidden transition-all duration-300 ${
-        isExpanded ? 'w-80 sm:w-96 h-80' : 'w-56 sm:w-64 h-56'
+      className={`absolute bottom-20 sm:bottom-24 left-3 sm:left-4 z-30 bg-neutral-950/90 backdrop-blur-md rounded-2xl border border-white/15 shadow-2xl overflow-hidden transition-all duration-300 pointer-events-auto ${
+        isExpanded
+          ? 'w-[90vw] sm:w-96 h-72 sm:h-80'
+          : 'w-[75vw] max-w-[260px] sm:max-w-none sm:w-64 h-52 sm:h-56'
       }`}
     >
       {/* Header */}

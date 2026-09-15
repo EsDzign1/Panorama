@@ -30,6 +30,8 @@ interface RoomCarouselProps {
   onZoomOut: () => void;
   isFullscreen: boolean;
   isVrMode: boolean;
+  isGyroActive?: boolean;
+  onToggleGyro?: () => void;
 }
 
 export const RoomCarousel: React.FC<RoomCarouselProps> = ({
@@ -45,31 +47,35 @@ export const RoomCarousel: React.FC<RoomCarouselProps> = ({
   onZoomOut,
   isFullscreen,
   isVrMode,
+  isGyroActive = false,
+  onToggleGyro,
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    return typeof window !== 'undefined' ? window.innerWidth < 640 : false;
+  });
 
   return (
     <div
       id="room-carousel-container"
-      className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 max-w-[95vw] w-max select-none"
+      className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 max-w-[96vw] w-max select-none pointer-events-auto"
     >
       {/* Floating Control Pill (Coohom Toolbar) */}
       <div
         id="tour-control-toolbar"
-        className="flex items-center gap-1 sm:gap-1.5 px-3 py-1.5 rounded-full bg-neutral-950/80 backdrop-blur-md border border-white/15 shadow-2xl text-white text-xs"
+        className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-neutral-950/85 backdrop-blur-md border border-white/15 shadow-2xl text-white text-xs"
       >
         {/* Toggle Room Thumbnails Tray */}
         <button
           id="toggle-carousel-tray-btn"
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className={`flex items-center gap-1 px-2.5 py-1 rounded-full transition-colors ${
+          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-full transition-colors ${
             !isCollapsed ? 'bg-white/15 text-white font-semibold' : 'text-neutral-300 hover:text-white hover:bg-white/10'
           }`}
           title="Toggle Room List"
         >
           <Layers className="w-3.5 h-3.5 text-sky-400" />
-          <span className="hidden sm:inline">Rooms ({rooms.length})</span>
-          {isCollapsed ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          <span className="text-[11px] sm:text-xs">Rooms ({rooms.length})</span>
+          {isCollapsed ? <ChevronUp className="w-3 h-3 text-neutral-400" /> : <ChevronDown className="w-3 h-3 text-neutral-400" />}
         </button>
 
         <div className="w-px h-4 bg-white/15 mx-0.5" />
@@ -104,6 +110,23 @@ export const RoomCarousel: React.FC<RoomCarouselProps> = ({
           {settings.showHotspots ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
         </button>
 
+        {/* Gyroscope / Motion View (Phone tilt navigation) */}
+        {onToggleGyro && (
+          <button
+            id="toolbar-gyro-btn"
+            onClick={onToggleGyro}
+            className={`p-1.5 rounded-full transition-colors ${
+              isGyroActive
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                : 'text-neutral-400 hover:text-white hover:bg-white/10'
+            }`}
+            title={isGyroActive ? 'Disable Phone Motion / Gyro Control' : 'Enable Phone Motion / Gyro View'}
+            aria-label="Phone Motion Control"
+          >
+            <Compass className={`w-4 h-4 ${isGyroActive ? 'animate-spin-slow' : ''}`} />
+          </button>
+        )}
+
         {/* Zoom Controls */}
         <div className="hidden sm:flex items-center gap-0.5">
           <button
@@ -132,10 +155,10 @@ export const RoomCarousel: React.FC<RoomCarouselProps> = ({
           onClick={onToggleVr}
           className={`p-1.5 rounded-full transition-colors ${
             isVrMode
-              ? 'bg-purple-600 text-white'
+              ? 'bg-purple-600 text-white shadow-md shadow-purple-900/40'
               : 'text-neutral-400 hover:text-white hover:bg-white/10'
           }`}
-          title="Stereoscopic VR Mode"
+          title="Stereoscopic VR Headset Mode"
           aria-label="VR Mode"
         >
           <Glasses className="w-4 h-4" />

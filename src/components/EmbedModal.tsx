@@ -13,6 +13,8 @@ import {
   Sliders,
   Terminal,
   Eye,
+  Github,
+  AlertCircle,
 } from 'lucide-react';
 
 interface EmbedModalProps {
@@ -32,10 +34,11 @@ export const EmbedModal: React.FC<EmbedModalProps> = ({
   const [showHotspots, setShowHotspots] = useState(true);
   const [showFloorPlan, setShowFloorPlan] = useState(true);
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
-  const [activeTab, setActiveTab] = useState<'iframe' | 'api' | 'preview'>('iframe');
+  const [activeTab, setActiveTab] = useState<'iframe' | 'api' | 'preview' | 'github'>('iframe');
 
   const [copiedIframe, setCopiedIframe] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [copiedDeployCmd, setCopiedDeployCmd] = useState(false);
 
   // Generate Embed URL
   const baseUrl = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '';
@@ -137,6 +140,17 @@ export const EmbedModal: React.FC<EmbedModalProps> = ({
           >
             <Terminal className="w-3.5 h-3.5" />
             JavaScript API &amp; Events
+          </button>
+          <button
+            onClick={() => setActiveTab('github')}
+            className={`pb-3 border-b-2 flex items-center gap-1.5 transition-colors ${
+              activeTab === 'github'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-neutral-400 hover:text-neutral-200'
+            }`}
+          >
+            <Github className="w-3.5 h-3.5" />
+            GitHub Pages Guide
           </button>
         </div>
 
@@ -358,6 +372,72 @@ export const EmbedModal: React.FC<EmbedModalProps> = ({
                   &nbsp;&nbsp;&#125;<br />
                   &#125;&#41;;
                 </span>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: GITHUB PAGES DEPLOYMENT */}
+          {activeTab === 'github' && (
+            <div className="space-y-4 text-xs">
+              <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-3 text-amber-200">
+                <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="font-bold block text-sm text-amber-300">
+                    Fixing "Resource failed to load: /src/main.tsx"
+                  </span>
+                  <p className="text-neutral-300 leading-relaxed">
+                    This error happens when GitHub Pages is serving the raw source code repository instead of the compiled production build from the <code className="text-amber-300 font-mono">dist/</code> folder. Modern browsers cannot run TypeScript <code className="text-amber-300 font-mono">.tsx</code> files directly without compilation.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="font-bold text-white text-sm">How to fix in 1 minute:</h4>
+
+                {/* Option 1 */}
+                <div className="p-4 bg-neutral-950 rounded-xl border border-neutral-800 space-y-2">
+                  <div className="flex items-center gap-2 font-semibold text-white">
+                    <span className="w-5 h-5 rounded-full bg-blue-600 text-[11px] flex items-center justify-center font-bold">1</span>
+                    <span>Method 1: GitHub Actions (Automatic, Recommended)</span>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1.5 text-neutral-300 pl-1 leading-relaxed">
+                    <li>Push your code to your repository (e.g. <code className="text-blue-400 font-mono">esdzign1/esdzign1.github.io</code>).</li>
+                    <li>On GitHub, go to <strong>Settings</strong> &rarr; <strong>Pages</strong>.</li>
+                    <li>Under <strong>Build and deployment &gt; Source</strong>, change the dropdown to:
+                      <div className="mt-1 p-2 bg-neutral-900 border border-neutral-700 rounded-lg font-mono text-emerald-400 font-bold">
+                        GitHub Actions
+                      </div>
+                    </li>
+                    <li>The included workflow (<code className="text-blue-400 font-mono">.github/workflows/deploy.yml</code>) will automatically build Vite and deploy the site!</li>
+                  </ol>
+                </div>
+
+                {/* Option 2 */}
+                <div className="p-4 bg-neutral-950 rounded-xl border border-neutral-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-semibold text-white">
+                      <span className="w-5 h-5 rounded-full bg-blue-600 text-[11px] flex items-center justify-center font-bold">2</span>
+                      <span>Method 2: One-Click Deploy via Terminal</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText('npm run deploy');
+                        setCopiedDeployCmd(true);
+                        setTimeout(() => setCopiedDeployCmd(false), 2000);
+                      }}
+                      className="flex items-center gap-1 px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-xs font-semibold transition-colors"
+                    >
+                      {copiedDeployCmd ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedDeployCmd ? 'Copied!' : 'Copy Command'}
+                    </button>
+                  </div>
+                  <pre className="p-2.5 bg-neutral-900 rounded-lg text-emerald-400 font-mono text-xs">
+                    npm run deploy
+                  </pre>
+                  <p className="text-neutral-400 text-[11px] leading-relaxed">
+                    This automatically runs <code className="text-neutral-300 font-mono">vite build</code> and pushes the bundled files to the <code className="text-neutral-300 font-mono">gh-pages</code> branch. In <strong>Settings &rarr; Pages</strong>, set branch to <code className="text-blue-400 font-mono">gh-pages</code> / <code className="text-blue-400 font-mono">root</code>.
+                  </p>
+                </div>
               </div>
             </div>
           )}
